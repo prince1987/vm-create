@@ -1,0 +1,53 @@
+---
+- name: Create Linux VM in VMware Workstation
+  hosts: workstation
+  gather_facts: false
+
+  vars:
+    vmrun_path: 'C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe'
+
+    template_vmx: 'D:\VMs\RHEL9-Template.vmx'
+
+    new_vm_name: 'RHEL9-Node01'
+
+    new_vmx: 'D:\VMs\RHEL9-Node01.vmx'
+
+  tasks:
+
+    - name: Check template exists
+      ansible.windows.win_stat:
+        path: "{{ template_vmx }}"
+      register: template_check
+
+    - name: Fail if template does not exist
+      ansible.builtin.fail:
+        msg: "VMware template VMX file does not exist."
+      when: not template_check.stat.exists
+
+    - name: Clone Linux template
+      ansible.windows.win_shell: |
+        & "{{ vmrun_path }}" -T ws clone `
+        "{{ template_vmx }}" `
+        "{{ new_vmx }}" `
+        full `
+        -cloneName="{{ new_vm_name }}"
+      args:
+        creates: "{{ new_vmx }}"
+
+    - name: Start new VM
+      ansible.windows.win_shell: |
+        & "{{ vmrun_path }}" -T ws start "{{ new_vmx }}" nogui
+
+    - name: Get VM IP address
+      ansible.windows.win_shell: |
+        & "{{ vmrun_path }}" -T ws getGuestIPAddress "{{ new_vmx }}" -wait
+      register: vm_ip
+
+    - name: Display VM IP
+      ansible.builtin.debug:
+        msg: "New VM IP address is {{ vm_ip.stdout | trim }}"
+
+    - name: Add new VM to runtime inventory
+      ansible.builtin.add_host:
+        name: "{{ vm_ip.stdout | trim }}"
+        groups: new_linux_servers
